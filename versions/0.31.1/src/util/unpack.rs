@@ -1,14 +1,14 @@
 use anchor_lang::prelude::*;
-use bincode;
+use bincode::{config, Decode};
 use default_boxed::DefaultBoxed;
 
-use crate::state::{TickArray, Tick, TICK_ARRAY_SIZE_USIZE, NUM_REWARDS};
+use crate::state::{Tick, TickArray, NUM_REWARDS, TICK_ARRAY_SIZE_USIZE};
 
 #[derive(Debug, PartialEq, Clone, Copy, DefaultBoxed)]
 pub struct UnpackedTickArray {
-  pub start_tick_index: i32,
-  pub ticks: [UnpackedTick; TICK_ARRAY_SIZE_USIZE],
-  pub whirlpool: Pubkey,
+    pub start_tick_index: i32,
+    pub ticks: [UnpackedTick; TICK_ARRAY_SIZE_USIZE],
+    pub whirlpool: Pubkey,
 }
 
 #[derive(borsh::BorshDeserialize, Debug, PartialEq, Default, Clone, Copy)]
@@ -21,39 +21,54 @@ pub struct UnpackedTick {
     pub reward_growths_outside: [u128; NUM_REWARDS],
 }
 
-pub fn unpack_tick_array(loader: &AccountLoader<TickArray>) -> std::result::Result<Box<UnpackedTickArray>, Error> {
-  try_deserialize_tick_array(
-    loader.to_account_info().owner,
-    &mut loader.to_account_info().data.borrow().as_ref(),
-  )
+pub fn unpack_tick_array(
+    loader: &AccountLoader<TickArray>,
+) -> std::result::Result<Box<UnpackedTickArray>, Error> {
+    try_deserialize_tick_array(
+        loader.to_account_info().owner,
+        &mut loader.to_account_info().data.borrow().as_ref(),
+    )
 }
 
-fn try_deserialize_tick_array(owner: &Pubkey, buf: &mut &[u8]) -> std::result::Result<Box<UnpackedTickArray>, Error> {
-  if !owner.eq(&crate::ID) {
-    return Err(anchor_lang::error::ErrorCode::ConstraintOwner.into());
-  }
+fn try_deserialize_tick_array(
+    owner: &Pubkey,
+    buf: &mut &[u8],
+) -> std::result::Result<Box<UnpackedTickArray>, Error> {
+    if !owner.eq(&crate::ID) {
+        return Err(anchor_lang::error::ErrorCode::ConstraintOwner.into());
+    }
 
-  let mut cursor = 0;
+    let mut cursor = 0;
 
-  let discriminator: u64 = bincode::deserialize(&buf[cursor..cursor+8]).unwrap();
-  cursor += 8;
+    let discriminator: u64 =
+        bincode::decode_from_slice(&buf[cursor..cursor + 8], config::standard())
+            .unwrap()
+            .0;
 
-  // DISCRIMINATOR: 45 61 bd be 6e 07 42 bb
-  if discriminator != 0xbb42076ebebd6145 /* LE u64 */ {
-    return Err(anchor_lang::error::ErrorCode::AccountDiscriminatorMismatch.into());
-  }
+    cursor += 8;
 
-  let mut tickarray = UnpackedTickArray::default_boxed();
+    // DISCRIMINATOR: 45 61 bd be 6e 07 42 bb
+    if discriminator != 0xbb42076ebebd6145
+    /* LE u64 */
+    {
+        return Err(anchor_lang::error::ErrorCode::AccountDiscriminatorMismatch.into());
+    }
 
-  tickarray.start_tick_index = bincode::deserialize(&buf[cursor..cursor+4]).unwrap();
-  cursor += 4;
+    let mut tickarray = UnpackedTickArray::default_boxed();
 
-  for i in 0..TICK_ARRAY_SIZE_USIZE {
-    tickarray.ticks[i] = UnpackedTick::deserialize(&mut &buf[cursor..cursor+Tick::LEN]).unwrap();
-    cursor += Tick::LEN;
-  }
+    tickarray.start_tick_index =
+        bincode::decode_from_slice(&buf[cursor..cursor + 4], config::standard())
+            .unwrap()
+            .0;
+    cursor += 4;
 
-  tickarray.whirlpool = Pubkey::deserialize(&mut &buf[cursor..cursor+32]).unwrap();
+    for i in 0..TICK_ARRAY_SIZE_USIZE {
+        tickarray.ticks[i] =
+            UnpackedTick::deserialize(&mut &buf[cursor..cursor + Tick::LEN]).unwrap();
+        cursor += Tick::LEN;
+    }
 
-  Ok(tickarray)
+    tickarray.whirlpool = Pubkey::deserialize(&mut &buf[cursor..cursor + 32]).unwrap();
+
+    Ok(tickarray)
 }

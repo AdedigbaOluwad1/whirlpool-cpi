@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use bincode::{config, Decode};
+use bincode;
 use default_boxed::DefaultBoxed;
 
 use crate::state::{Tick, TickArray, NUM_REWARDS, TICK_ARRAY_SIZE_USIZE};
@@ -39,12 +39,11 @@ fn try_deserialize_tick_array(
     }
 
     let mut cursor = 0;
-
-    let discriminator: u64 =
-        bincode::decode_from_slice(&buf[cursor..cursor + 8], config::standard())
-            .unwrap()
-            .0;
-
+    let discriminator = u64::from_le_bytes(
+        buf[cursor..cursor + 8]
+            .try_into()
+            .map_err(|_| anchor_lang::error::ErrorCode::AccountDidNotDeserialize)?,
+    );
     cursor += 8;
 
     // DISCRIMINATOR: 45 61 bd be 6e 07 42 bb
@@ -56,10 +55,11 @@ fn try_deserialize_tick_array(
 
     let mut tickarray = UnpackedTickArray::default_boxed();
 
-    tickarray.start_tick_index =
-        bincode::decode_from_slice(&buf[cursor..cursor + 4], config::standard())
-            .unwrap()
-            .0;
+    tickarray.start_tick_index = i32::from_le_bytes(
+        buf[cursor..cursor + 4]
+            .try_into()
+            .map_err(|_| anchor_lang::error::ErrorCode::AccountDidNotDeserialize)?,
+    );
     cursor += 4;
 
     for i in 0..TICK_ARRAY_SIZE_USIZE {
